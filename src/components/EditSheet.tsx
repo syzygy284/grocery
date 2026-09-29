@@ -6,7 +6,9 @@ import { Sheet } from './Sheet'
 
 export function EditSheet({ item, onClose }: { item: Item; onClose: () => void }) {
   const [name, setName] = useState(item.name)
-  const [qty, setQty] = useState(String(item.qty))
+  // Off-list items show and restore usualQty, so that's the amount to edit.
+  const qtyField = item.status === 'off' ? 'usualQty' : 'qty'
+  const [qty, setQty] = useState(String(item[qtyField]))
   const [unit, setUnit] = useState(item.unit)
   const [step, setStep] = useState(String(item.step))
   const [error, setError] = useState('')
@@ -17,7 +19,7 @@ export function EditSheet({ item, onClose }: { item: Item; onClose: () => void }
     if (!name.trim()) return setError('Enter a name')
     if (!(q > 0)) return setError('Amount must be more than 0')
     if (!(s > 0)) return setError('Step must be more than 0')
-    await updateItem(item.id, { name: name.trim(), qty: q, unit: unit.trim(), step: s })
+    await updateItem(item.id, { name: name.trim(), [qtyField]: q, unit: unit.trim(), step: s })
     onClose()
   }
 

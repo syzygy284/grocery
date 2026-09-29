@@ -2,7 +2,7 @@ import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, us
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Check, History, Plus, Settings, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { addEntry, moveBetween, restoreToList, setSetting, snooze, useSetting } from '../actions'
 import { db, type Item } from '../db'
 import { daysAgo, fmtQty } from '../format'
@@ -25,6 +25,14 @@ export function ListView({ onNav }: { onNav: (v: 'history' | 'settings') => void
   const [finishing, setFinishing] = useState(false)
   const [showAllOff, setShowAllOff] = useState(false)
   const [showAllSugg, setShowAllSugg] = useState(false)
+  // Re-read the clock when the app is reopened, so suggestions and
+  // "days ago" text aren't stale after the phone resumes the PWA.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const onVisible = () => document.visibilityState === 'visible' && setNow(Date.now())
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -44,7 +52,7 @@ export function ListView({ onNav }: { onNav: (v: 'history' | 'settings') => void
   const matches = query ? off.filter((i) => i.name.toLowerCase().includes(query)).slice(0, 5) : []
 
   const suggestions =
-    suggestionsOn && pausedUntil < Date.now() && purchases ? computeSuggestions(live, purchases) : []
+    suggestionsOn && pausedUntil < now && purchases ? computeSuggestions(live, purchases, now) : []
   const shownSugg = showAllSugg ? suggestions : suggestions.slice(0, 3)
   const shownOff = showAllOff ? off : off.slice(0, 8)
 

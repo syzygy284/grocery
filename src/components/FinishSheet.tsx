@@ -9,14 +9,17 @@ export function FinishSheet({ cartCount, onClose }: { cartCount: number; onClose
   const [total, setTotal] = useState('')
   const [store, setStore] = useState('')
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
   const stores = useLiveQuery(async () => {
     const trips = await db.trips.orderBy('date').reverse().toArray()
     return [...new Set(trips.filter((t) => !t.deleted && t.store).map((t) => t.store!))]
   }, [])
 
   async function save() {
+    if (saving) return
     const n = Number(total.replace(/[$,\s]/g, ''))
     if (total.trim() === '' || !Number.isFinite(n) || n < 0) return setError('Enter the total you paid')
+    setSaving(true)
     await finishTrip(Math.round(n * 100), store)
     onClose()
   }

@@ -17,19 +17,30 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
   }, [])
 
   async function download() {
-    const blob = new Blob([await exportBackup()], { type: 'application/json' })
+    const name = `grocery-backup-${new Date().toISOString().slice(0, 10)}.json`
+    const file = new File([await exportBackup()], name, { type: 'application/json' })
+    // Installed iPhone PWAs handle blob downloads poorly; the share sheet
+    // ("Save to Files") works there and on Android.
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file] })
+      } catch {
+        // User closed the share sheet.
+      }
+      return
+    }
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `grocery-backup-${new Date().toISOString().slice(0, 10)}.json`
+    a.href = URL.createObjectURL(file)
+    a.download = name
     a.click()
-    URL.revokeObjectURL(a.href)
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000)
   }
 
   async function upload(file: File | undefined) {
     if (!file) return
     try {
       await importBackup(await file.text())
-      setMsg('Backup restored.')
+      setMsg('Backup restored. Newer changes on this device were kept.')
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Could not read that file')
     }
@@ -77,7 +88,8 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
         <button onClick={download}>Export backup</button>
         <label className="file-btn">
           Import backup
-          <input type="file" accept="application/json,.json" onChange={(e) => upload(e.target.files?.[0])} />
+          <input type="file" accept="application/json,.json" onChange={(e) => (upload(e.target.files?.[0]), (e.target.value = ''))}
+          />
         </label>
       </div>
       {msg && <p className="muted small pad">{msg}</p>}

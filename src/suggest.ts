@@ -8,10 +8,17 @@ export interface Suggestion {
   daysSince: number
 }
 
+// Day number of the *local* calendar date, so an evening trip doesn't count as
+// the next (UTC) day. Date.UTC on local parts also sidesteps DST 23/25h days.
+function localDay(t: number): number {
+  const d = new Date(t)
+  return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY
+}
+
 // Typical gap between purchases of an item, in ms. Uses the median of the
 // most recent gaps so one odd week doesn't skew it. Needs 2+ distinct days.
 export function purchaseInterval(boughtAt: number[]): number | undefined {
-  const days = [...new Set(boughtAt.map((t) => Math.floor(t / DAY)))].sort((a, b) => a - b)
+  const days = [...new Set(boughtAt.map(localDay))].sort((a, b) => a - b)
   if (days.length < 2) return undefined
   const gaps = days.slice(1).map((d, i) => d - days[i]).slice(-6).sort((a, b) => a - b)
   const mid = Math.floor(gaps.length / 2)

@@ -1,3 +1,4 @@
+import type { Table } from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, uid, type Item } from './db'
 import { parseEntry } from './format'
@@ -45,10 +46,16 @@ async function addParsed(name: string, qty?: number, unit?: string) {
   })
 }
 
+// Reads the current qty inside the transaction so rapid taps don't overwrite
+// each other with the same stale value.
 export async function stepQty(item: Item, dir: 1 | -1) {
-  const next = round(item.qty + dir * item.step)
-  if (next <= 0) return
-  await db.items.update(item.id, { qty: next, updatedAt: Date.now() })
+  await db.transaction('rw', db.items, async () => {
+    const cur = await db.items.get(item.id)
+    if (!cur) return
+    const next = round(cur.qty + dir * cur.step)
+    if (next <= 0) return
+    await db.items.update(item.id, { qty: next, updatedAt: Date.now() })
+  })
 }
 
 export async function toggleCart(item: Item) {
@@ -81,14 +88,22 @@ export async function deleteItem(id: string) {
   await updateItem(id, { status: 'off', deleted: true })
 }
 
-// Place an item between two neighbours using a fractional sortOrder, so
-// items currently off the list keep their place in the walking order.
+// Place an item right after `before` (or right before `after`) using a
+// fractional sortOrder. Gaps are measured against ALL items, including ones
+// currently off the list, so the new value never ties with a hidden item.
 export async function moveBetween(id: string, before?: Item, after?: Item) {
-  let order: number
-  if (before && after) order = (before.sortOrder + after.sortOrder) / 2
-  else if (before) order = before.sortOrder + 1
-  else if (after) order = after.sortOrder - 1
-  else return
+  if (!before && !after) return
+  const all = (await liveItems()).filter((i) => i.id !== id).sort((a, b) => a.sortOrder - b.sortOrder)
+  let lo: number | undefined
+  let hi: number | undefined
+  if (before) {
+    lo = before.sortOrder
+    hi = all.find((i) => i.sortOrder > lo!)?.sortOrder
+  } else {
+    hi = after!.sortOrder
+    lo = all.findLast((i) => i.sortOrder < hi!)?.sortOrder
+  }
+  const order = lo !== undefined && hi !== undefined ? (lo + hi) / 2 : lo !== undefined ? lo + 1 : hi! - 1
   await updateItem(id, { sortOrder: order })
 }
 
@@ -99,6 +114,8 @@ export async function snooze(id: string, ms: number) {
 export async function finishTrip(totalCents: number, store: string) {
   await db.transaction('rw', db.items, db.trips, db.purchases, async () => {
     const cart = (await liveItems()).filter((i) => i.status === 'cart')
+    // Guards against a double-tapped Save logging a second, empty trip.
+    if (cart.length === 0) return
     const now = Date.now()
     const tripId = uid()
     await db.trips.add({
@@ -130,9 +147,16 @@ export async function finishTrip(totalCents: number, store: string) {
 
 export async function deleteTrip(tripId: string) {
   const now = Date.now()
-  await db.transaction('rw', db.trips, db.purchases, async () => {
+  await db.transaction('rw', db.trips, db.purchases, db.items, async () => {
     await db.trips.update(tripId, { deleted: true, updatedAt: now })
+    const removed = await db.purchases.where('tripId').equals(tripId).toArray()
     await db.purchases.where('tripId').equals(tripId).modify({ deleted: true, updatedAt: now })
+    // Recompute lastBoughtAt from the purchases that remain.
+    for (const itemId of new Set(removed.map((p) => p.itemId))) {
+      const rest = (await db.purchases.where('itemId').equals(itemId).toArray()).filter((p) => !p.deleted)
+      const last = rest.length ? Math.max(...rest.map((p) => p.boughtAt)) : undefined
+      await db.items.update(itemId, { lastBoughtAt: last, updatedAt: now })
+    }
   })
 }
 
@@ -158,10 +182,18 @@ export async function exportBackup(): Promise<string> {
 export async function importBackup(json: string) {
   const data = JSON.parse(json)
   if (data?.version !== 1 || !Array.isArray(data.items)) throw new Error('Not a grocery backup file')
+  // Merge: a backup record only replaces a local one if it's newer, so
+  // restoring an old backup can't undo more recent changes.
   await db.transaction('rw', db.items, db.trips, db.purchases, db.settings, async () => {
-    await db.items.bulkPut(data.items)
-    await db.trips.bulkPut(data.trips ?? [])
-    await db.purchases.bulkPut(data.purchases ?? [])
-    await db.settings.bulkPut(data.settings ?? [])
+    await mergeNewer(db.items, data.items, 'id')
+    await mergeNewer(db.trips, data.trips ?? [], 'id')
+    await mergeNewer(db.purchases, data.purchases ?? [], 'id')
+    await mergeNewer(db.settings, data.settings ?? [], 'key')
   })
+}
+
+async function mergeNewer<T extends { updatedAt: number }>(table: Table<T, string>, rows: T[], key: keyof T) {
+  const valid = rows.filter((r) => r && typeof r.updatedAt === 'number' && typeof r[key] === 'string')
+  const existing = await table.bulkGet(valid.map((r) => r[key] as string))
+  await table.bulkPut(valid.filter((r, i) => !existing[i] || existing[i]!.updatedAt < r.updatedAt))
 }
