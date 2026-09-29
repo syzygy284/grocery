@@ -37,7 +37,8 @@ export const fmtMoney = (cents: number) => money.format(cents / 100)
 const DAY = 86_400_000
 
 export function daysAgo(ts: number, now = Date.now()): string {
-  const d = Math.floor((startOfDay(now) - startOfDay(ts)) / DAY)
+  // Round, not floor: DST days are 23 or 25 hours long.
+  const d = Math.round((startOfDay(now) - startOfDay(ts)) / DAY)
   if (d <= 0) return 'today'
   if (d === 1) return 'yesterday'
   return `${d} days ago`

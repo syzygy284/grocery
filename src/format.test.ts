@@ -95,11 +95,8 @@ describe('daysAgo', () => {
     expect(daysAgo(at(2026, 11, 1), at(2026, 11, 2))).toBe('yesterday')
   })
 
-  // BUG (src/format.ts daysAgo): Math.floor over a 23-hour spring-forward day
-  // gives 0, so the day after DST starts shows "today" instead of "yesterday"
-  // (and every later count is one short). Math.round would fix it.
-  // Remove `.fails` once the app code is fixed.
-  it.fails('counts days across the spring-forward DST change', () => {
+  // Regression: Math.floor over a 23-hour spring-forward day used to give 0.
+  it('counts days across the spring-forward DST change', () => {
     // 2026-03-08 has 23 hours in America/New_York.
     expect(daysAgo(at(2026, 3, 8), at(2026, 3, 9))).toBe('yesterday')
   })

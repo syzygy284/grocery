@@ -68,12 +68,10 @@ describe('purchaseInterval', () => {
     expect(purchaseInterval(days.map(daysBefore))).toBe(7 * DAY)
   })
 
-  // BUG (src/suggest.ts:14): days are bucketed with Math.floor(t / DAY), i.e.
-  // UTC days, not the user's local days. In America/New_York a trip Monday at
-  // 9pm (01:00 UTC Tuesday) and Tuesday at 7pm (23:00 UTC Tuesday) land in the
-  // same UTC day and are deduped, so two real shopping days count as one.
-  // Remove `.fails` once the app code is fixed.
-  it.fails('buckets purchases by local calendar day', () => {
+  // Regression: days used to be bucketed as UTC days. In America/New_York a
+  // trip Monday 9pm (01:00 UTC Tue) and Tuesday 7pm (23:00 UTC Tue) must count
+  // as two shopping days, not one.
+  it('buckets purchases by local calendar day', () => {
     const mon9pm = new Date(2026, 5, 29, 21).getTime()
     const tue7pm = new Date(2026, 5, 30, 19).getTime()
     expect(purchaseInterval([mon9pm, tue7pm])).toBe(1 * DAY)
