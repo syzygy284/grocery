@@ -10,6 +10,7 @@ Personal grocery list PWA. Single user, used mainly on an iPhone in the store (A
 ## Commands
 - `npm run dev` — dev server (also exposed on LAN via `server.host`)
 - `npm run build` — type-check + production build (run this to verify changes)
+- `npm test` — Vitest unit tests (fake-indexeddb for DB tests; TZ pinned to America/New_York in `vitest.config.ts`). Deploys run this first.
 - `npm run lint` — oxlint
 - `node scripts/make-icons.mjs` — regenerate PNG app icons in `public/`
 
@@ -23,7 +24,11 @@ Personal grocery list PWA. Single user, used mainly on an iPhone in the store (A
 ## Sync-readiness (don't break)
 Every record has a UUID `id`, an `updatedAt` timestamp, and soft-delete `deleted` flag. Always set `updatedAt` on writes and soft-delete instead of removing rows. Sync itself is not built yet.
 
+## Deploy
+GitHub Pages via `.github/workflows/deploy.yml` on every push to `main`; built with `--base=/<repo>/`, so never hardcode root-absolute URLs in app code.
+
 ## Gotchas
+- Day math must use local calendar days and tolerate 23/25-hour DST days (round, don't floor).
 - iOS requires HTTPS for service workers / install; LAN http works for UI testing only. `uid()` has a fallback because `crypto.randomUUID` is missing on insecure origins.
 - Inputs must be ≥16px font or iOS Safari zooms on focus.
 - Multi-step DB writes go in `db.transaction` (rapid adds raced before this).

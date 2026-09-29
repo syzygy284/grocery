@@ -27,6 +27,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm test
       # Pages serves project sites from /<repo-name>/, so build with that base path.
       - run: npm run build -- --base=/${{ github.event.repository.name }}/
       - uses: actions/configure-pages@v5
